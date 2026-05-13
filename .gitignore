@@ -1,0 +1,60 @@
+# Data — never commit raw medical imaging data
+data/
+brain_multicoil_test_batch_0/
+
+# Model outputs
+checkpoints/
+outputs/
+runs/
+logs/
+*.pth
+*.pt
+*.h5
+*.ckpt
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Experiment artifacts
+wandb/
+mlruns/
+mlflow.db
+*.gif
+
+# Preprocessed cache
+cache_npy/
+
+# LaTeX build artifacts
+*.aux
+*.log
+
+# Project planning documentation, mostly obsidian notes and research papers 
+docs/
+
+# Secrets
+*.env
+secrets.yaml
