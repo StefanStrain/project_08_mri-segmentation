@@ -25,6 +25,7 @@ from monai.inferers import sliding_window_inference
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from src.metrics import dice_score
 from src.models.unet3d import UNet3D
 from src.models.attention_unet3d import AttentionUNet3D
 from src.models.swin_unetr import build_swin_unetr
@@ -42,10 +43,6 @@ _FACTORIES = {
 NPY_DIR = ROOT / "cache_npy"
 SPLITS = ROOT / "data/splits.json"
 
-def dice(pred: np.ndarray, gt: np.ndarray) -> float:
-    inter = (pred & gt).sum()
-    denom = pred.sum() + gt.sum()
-    return float(2 * inter / (denom + 1e-8)) # small epsilon to avoid div by zero
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -77,7 +74,7 @@ def main():
 
     for i, cid in enumerate(val_ids):
         image = np.load(NPY_DIR / f"{cid}_image.npy").astype(np.float32)
-        label = np.load(NPY_DIR / f"{cid}_label.npy").astype(bool)
+        label = np.load(NPY_DIR / f"{cid}_label.npy").astype(np.float32)
 
         x = torch.from_numpy(image).unsqueeze(0).to(device)
         with torch.no_grad():
@@ -86,11 +83,10 @@ def main():
                 predictor=model, overlap=args.overlap, mode="gaussian",
             )
 
-        pred = (torch.sigmoid(logits).squeeze(0).cpu().numpy() > 0.5)
-
-        wt = dice(pred[1], label[1])
-        tc = dice(pred[0], label[0])
-        et = dice(pred[2], label[2])
+        # call straight into the canonical metric so this script can't drift from src/inference.py
+        target = torch.from_numpy(label).unsqueeze(0).to(logits.device)
+        scores = dice_score(logits, target)
+        wt, tc, et = scores["WT"], scores["TC"], scores["ET"]
         wt_scores.append(wt)
         tc_scores.append(tc)
         et_scores.append(et)

@@ -9,13 +9,13 @@ def _build_brats_regions(
     binary: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
-        Convert (B, 3, H, W, D) binary channel mask to WT, TC, ET region tensors.
-        Channel layout from ConvertToMultiChannelBasedOnBratsClassesd:
-        channel 0 = NCR (label 1), channel 1 = ED (label 2), channel 2 = ET (label 4)
-        WT = all three, TC = NCR + ET, ET = ET only
+        Split a (B, 3, H, W, D) binary channel mask into WT, TC, ET region tensors.
+        ConvertToMultiChannelBasedOnBratsClassesd already emits the overlapping BraTS
+        regions, so we just pick the channels out, no reconstruction needed:
+        channel 0 = TC (labels 1+4), channel 1 = WT (labels 1+2+4), channel 2 = ET (label 4).
     """
-    wt = (binary[:, 0] | binary[:, 1] | binary[:, 2]).float()
-    tc = (binary[:, 0] | binary[:, 2]).float()
+    tc = binary[:, 0].float()
+    wt = binary[:, 1].float()
     et = binary[:, 2].float()
     return wt, tc, et
 
@@ -30,6 +30,12 @@ def dice_score(
         preds: raw logits (B, 3, H, W, D)
         targets: binary targets (B, 3, H, W, D)
         Returns {"WT": float, "TC": float, "ET": float, "mean": float}
+
+        Empty regions follow the BraTS-official convention:
+        both empty (GT and pred) scores 1.0 (perfect agreement), GT empty but
+        something predicted scores 0.0 (false positive). This is the single canonical
+        Dice used everywhere - scripts/evaluate.py calls straight into here so the two
+        evaluation paths can't drift apart.
     """
     binary_preds = torch.sigmoid(preds) > 0.5 # threshold at 0.5 to get hard predictions
     pred_wt, pred_tc, pred_et = _build_brats_regions(binary_preds)
@@ -42,11 +48,18 @@ def dice_score(
         ("ET", pred_et, gt_et),
     ]:
         intersection = (pred_r * gt_r).sum(dim=(1, 2, 3))
-        union = pred_r.sum(dim=(1, 2, 3)) + gt_r.sum(dim=(1, 2, 3))
-        dice = (2.0 * intersection + eps) / (union + eps)
+        denom = pred_r.sum(dim=(1, 2, 3)) + gt_r.sum(dim=(1, 2, 3))
+        # denom == 0 means both pred and GT are empty -> perfect agreement (1.0)
+        # everything else is standard Dice; GT-empty-but-predicted falls out as 0.0 on its own
+        # clamp keeps the division safe in the branch torch.where doesn't end up using
+        dice = torch.where(
+            denom > 0,
+            2.0 * intersection / denom.clamp(min=eps),
+            torch.ones_like(denom),
+        )
         results[name] = dice.mean().item()
 
-    results["mean"] = sum(results.values()) / 3
+    results["mean"] = (results["WT"] + results["TC"] + results["ET"]) / 3
     return results
 
 

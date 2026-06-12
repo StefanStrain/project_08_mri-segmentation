@@ -17,7 +17,8 @@ def get_preprocessing_transforms() -> Compose:
     return Compose([
         LoadImaged(keys=["image", "label"], reader="NibabelReader"),
         EnsureChannelFirstd(keys=["image", "label"]),
-        # converts single-channel mask (values 0,1,2,4) into 3 binary channels: WT, TC, ET
+        # converts single-channel mask (values 0,1,2,4) into 3 overlapping binary channels:
+        # channel 0 = TC, channel 1 = WT, channel 2 = ET (MONAI BraTS convention)
         ConvertToMultiChannelBasedOnBratsClassesd(keys="label"),
         Orientationd(keys=["image", "label"], axcodes="RAS"),
         Spacingd(
